@@ -1,22 +1,28 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["paystream"]
 }
 
 enum MerchantPlan {
   STARTER
   PRO
   ENTERPRISE
+
+  @@schema("paystream")
 }
 
 enum PaymentMethod {
   PIX
   CREDIT_CARD
   BOLETO
+
+  @@schema("paystream")
 }
 
 enum TransactionStatus {
@@ -26,27 +32,31 @@ enum TransactionStatus {
   FAILED
   REFUNDED
   CHARGEBACK
+
+  @@schema("paystream")
 }
 
 enum WebhookStatus {
   DELIVERED
   FAILED
   RETRYING
+
+  @@schema("paystream")
 }
 
 model Merchant {
-  id           String       @id @default(uuid())
-  name         String       // Razão Social / Nome da Empresa
-  slug         String       @unique // Identificador de subdomínio
-  document     String       // CNPJ ou CPF
-  plan         MerchantPlan @default(PRO)
-  apiKeyLive   String       @unique // Chave pública / privada de API
-  webhookSecret String      // Segredo HMAC para assinatura de payload
-  webhookUrl   String?      // Endpoint de notificação do e-commerce
-  feePercent   Decimal      @default(2.99) // Taxa gateway por transação
-  feeFixed     Decimal      @default(0.49) // Taxa fixa em R$
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  id            String       @id @default(uuid())
+  name          String
+  slug          String       @unique
+  document      String
+  plan          MerchantPlan @default(PRO)
+  apiKeyLive    String       @unique
+  webhookSecret String
+  webhookUrl    String?
+  feePercent    Decimal      @default(2.99)
+  feeFixed      Decimal      @default(0.49)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
 
   users        User[]
   recipients   Recipient[]
@@ -54,6 +64,7 @@ model Merchant {
   webhooks     WebhookLog[]
 
   @@map("merchants")
+  @@schema("paystream")
 }
 
 model User {
@@ -69,84 +80,88 @@ model User {
 
   @@unique([merchantId, email])
   @@map("users")
+  @@schema("paystream")
 }
 
 model Recipient {
-  id           String   @id @default(uuid())
-  merchantId   String   @map("merchant_id")
-  name         String   // Nome do Vendedor / Marketplace Seller
-  document     String   // CPF ou CNPJ do recebedor
-  bankCode     String   // Código do Banco (Ex: 260 - Nubank)
-  agency       String   // Agência
-  account      String   // Conta corrente / chave PIX
-  createdAt    DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid())
+  merchantId String   @map("merchant_id")
+  name       String
+  document   String
+  bankCode   String
+  agency     String
+  account    String
+  createdAt  DateTime @default(now()) @map("created_at")
 
-  merchant     Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  splits       SplitRule[]
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  splits     SplitRule[]
 
   @@map("recipients")
+  @@schema("paystream")
 }
 
 model Transaction {
-  id              String            @id @default(uuid())
-  merchantId      String            @map("merchant_id")
-  externalId      String?           @map("external_id") // ID do Pedido na Loja Virtual (ex: #ORD-9842)
-  amount          Decimal           // Valor Bruto em R$
-  netAmount       Decimal           // Valor Líquido (descontada taxa do gateway)
-  feeAmount       Decimal           // Taxa retida pelo gateway
-  paymentMethod   PaymentMethod     @map("payment_method")
-  status          TransactionStatus @default(PENDING)
-  customerName    String            @map("customer_name")
-  customerEmail   String            @map("customer_email")
-  customerDoc     String            @map("customer_doc")
+  id             String            @id @default(uuid())
+  merchantId     String            @map("merchant_id")
+  externalId     String?           @map("external_id")
+  amount         Decimal
+  netAmount      Decimal
+  feeAmount      Decimal
+  paymentMethod  PaymentMethod     @map("payment_method")
+  status         TransactionStatus @default(PENDING)
+  customerName   String            @map("customer_name")
+  customerEmail  String            @map("customer_email")
+  customerDoc    String            @map("customer_doc")
   
-  // Detalhes do Pagamento
-  pixQrCode       String?           @map("pix_qrcode") // Base64 da imagem QR Code
-  pixPayload      String?           @map("pix_payload") // Chave Copia e Cola
-  cardLastDigits  String?           @map("card_last_digits")
-  cardBrand       String?           @map("card_brand")
-  installments    Int               @default(1)
+  pixQrCode      String?           @map("pix_qrcode")
+  pixPayload     String?           @map("pix_payload")
+  cardLastDigits String?           @map("card_last_digits")
+  cardBrand      String?           @map("card_brand")
+  installments   Int               @default(1)
   
-  paidAt          DateTime?         @map("paid_at")
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
+  paidAt         DateTime?         @map("paid_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
 
-  merchant        Merchant          @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  splits          SplitRule[]
+  merchant          Merchant          @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  splits            SplitRule[]
   webhookDeliveries WebhookLog[]
 
   @@map("transactions")
+  @@schema("paystream")
 }
 
 model SplitRule {
   id            String      @id @default(uuid())
   transactionId String      @map("transaction_id")
   recipientId   String      @map("recipient_id")
-  amount        Decimal     // Valor repassado para este recebedor
-  percent       Decimal?    // Percentual configurado
+  amount        Decimal
+  percent       Decimal?
   createdAt     DateTime    @default(now()) @map("created_at")
 
   transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   recipient     Recipient   @relation(fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@map("split_rules")
+  @@schema("paystream")
 }
 
 model WebhookLog {
-  id            String        @id @default(uuid())
-  merchantId    String        @map("merchant_id")
-  transactionId String        @map("transaction_id")
-  event         String        // ex: transaction.paid, transaction.refunded
-  payload       Json
-  signature     String        // Assinatura HMAC-SHA256
-  endpointUrl   String        @map("endpoint_url")
-  responseStatus Int?         @map("response_status")
-  status        WebhookStatus @default(DELIVERED)
-  attempts      Int           @default(1)
-  createdAt     DateTime      @default(now()) @map("created_at")
+  id             String        @id @default(uuid())
+  merchantId     String        @map("merchant_id")
+  transactionId  String        @map("transaction_id")
+  event          String
+  payload        Json
+  signature      String
+  endpointUrl    String        @map("endpoint_url")
+  responseStatus Int?          @map("response_status")
+  status         WebhookStatus @default(DELIVERED)
+  attempts       Int           @default(1)
+  createdAt      DateTime      @default(now()) @map("created_at")
 
-  merchant      Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  transaction   Transaction   @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  merchant       Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  transaction    Transaction   @relation(fields: [transactionId], references: [id], onDelete: Cascade)
 
   @@map("webhook_logs")
+  @@schema("paystream")
 }
