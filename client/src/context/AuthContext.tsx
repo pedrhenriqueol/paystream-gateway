@@ -30,8 +30,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchMe = async () => {
     try {
       const response = await api.get('/auth/me');
-      setUser(response.data.user);
-      setMerchant(response.data.merchant);
+      // Backend returns { user: { id, name, email, role, merchant: { ... } } }
+      const userData = response.data.user;
+      const merchantData = userData.merchant;
+
+      setUser({
+        id: userData.id,
+        name: userData.name,
+        email: userData.email,
+        role: userData.role,
+        merchant: merchantData
+      });
+      setMerchant(merchantData);
     } catch {
       localStorage.removeItem('paystream_token');
       setToken(null);
@@ -51,11 +61,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [token]);
 
   const login = async (slug: string, email: string, password: string) => {
-    const response = await api.post('/auth/login', { slug, email, password });
+    // Backend expects { merchantSlug, email, password }
+    const response = await api.post('/auth/login', {
+      merchantSlug: slug,
+      email,
+      password
+    });
     const { token: newToken, user: userData, merchant: merchantData } = response.data;
     localStorage.setItem('paystream_token', newToken);
     setToken(newToken);
-    setUser(userData);
+    setUser({ ...userData, merchant: merchantData });
     setMerchant(merchantData);
   };
 
@@ -67,11 +82,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     adminEmail: string;
     adminPassword: string;
   }) => {
-    const response = await api.post('/auth/register', data);
+    // Backend expects { merchantName, merchantSlug, document, adminName, email, password }
+    const response = await api.post('/auth/register-merchant', {
+      merchantName: data.name,
+      merchantSlug: data.slug,
+      document: data.document,
+      adminName: data.adminName,
+      email: data.adminEmail,
+      password: data.adminPassword
+    });
     const { token: newToken, user: userData, merchant: merchantData } = response.data;
     localStorage.setItem('paystream_token', newToken);
     setToken(newToken);
-    setUser(userData);
+    setUser({ ...userData, merchant: merchantData });
     setMerchant(merchantData);
   };
 
@@ -80,6 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await api.post('/auth/logout');
     } catch {}
     localStorage.removeItem('paystream_token');
+    sessionStorage.removeItem('paystream_cached_metrics');
     setToken(null);
     setUser(null);
     setMerchant(null);
