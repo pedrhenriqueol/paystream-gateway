@@ -1,20 +1,21 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { CreditCard, Lock, Mail, Building, ArrowRight, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Zap, Lock, Mail, Building2, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export const Login: React.FC = () => {
-  const navigate = useNavigate();
-  const { login } = useAuth();
-
-  const [merchantSlug, setMerchantSlug] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [slug, setSlug] = useState('techstore');
+  const [email, setEmail] = useState('admin@techstore.com');
+  const [password, setPassword] = useState('pedrooliveira1227!');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
   const handleFillDemo = () => {
-    setMerchantSlug('techstore');
+    setSlug('techstore');
     setEmail('admin@techstore.com');
     setPassword('pedrooliveira1227!');
   };
@@ -25,118 +26,160 @@ export const Login: React.FC = () => {
     setError('');
 
     try {
-      await login(merchantSlug.trim(), email.trim(), password);
+      await login(slug, email, password);
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Falha ao autenticar.');
+      setError(err.message || 'Credenciais inválidas. Verifique o slug do merchant e a senha.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pay-darker via-pay-dark to-[#0F172A] p-4 relative overflow-hidden">
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-pay-accent/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-pay-emerald/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen bg-fintech-bg text-slate-100 flex items-center justify-center p-4 selection:bg-fintech-neon selection:text-black relative overflow-hidden">
+      {/* Background ambient glows */}
+      <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-fintech-neon/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-fintech-violet/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="w-full max-w-md bg-pay-card/90 backdrop-blur-xl border border-pay-border rounded-2xl p-8 shadow-2xl relative z-10">
+      <motion.div 
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 glass-panel border border-fintech-border rounded-3xl overflow-hidden shadow-2xl relative z-10"
+      >
         
-        {/* Brand Header */}
-        <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-12 h-12 rounded-xl bg-pay-accent/20 border border-pay-accent/40 flex items-center justify-center text-pay-accent mb-3 shadow-md">
-            <CreditCard className="w-6 h-6" />
+        {/* Left Visual Column */}
+        <div className="p-8 bg-gradient-to-br from-fintech-surface via-fintech-bg to-slate-950 border-b md:border-b-0 md:border-r border-fintech-border flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-fintech-neon to-fintech-violet p-[1px]">
+                <div className="w-full h-full bg-fintech-bg rounded-[11px] flex items-center justify-center text-fintech-neon">
+                  <Zap className="w-5 h-5 fill-current" />
+                </div>
+              </div>
+              <div>
+                <span className="font-extrabold tracking-tight text-white text-lg">PAYSTREAM</span>
+                <span className="text-[10px] font-mono text-fintech-muted block">FINTECH ENGINE</span>
+              </div>
+            </div>
+
+            <div className="mt-8 space-y-4 font-mono text-xs">
+              <h2 className="text-xl font-bold font-sans text-white leading-snug">
+                Infraestrutura de Pagamentos & Split para Grandes Mercados
+              </h2>
+              <p className="text-fintech-muted text-xs leading-relaxed">
+                Liquidação instantânea PIX SPI, orquestração multi-adquirente e distribuição automatizada para milhares de sellers.
+              </p>
+
+              <div className="pt-4 space-y-2 text-[11px]">
+                <div className="flex items-center gap-2 text-fintech-emerald">
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
+                  <span>Criptografia de ponta a ponta & HMAC-SHA256</span>
+                </div>
+                <div className="flex items-center gap-2 text-fintech-neon">
+                  <Sparkles className="w-4 h-4 shrink-0" />
+                  <span>Divisão de split transparente na liquidação D+0</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-            PayStream <span className="text-pay-accent font-mono text-xs px-2 py-0.5 rounded bg-pay-accent/10 border border-pay-accent/30">GATEWAY</span>
-          </h1>
-          <p className="text-xs text-gray-400 mt-1">Portal de Liquidação Financeira & Gestão de Checkout</p>
+
+          <div className="pt-6 border-t border-fintech-border/60 text-[11px] font-mono text-fintech-muted flex items-center justify-between">
+            <span>PCI-DSS Level 1</span>
+            <span>Versão 2.4</span>
+          </div>
         </div>
 
-        {error && (
-          <div className="mb-4 p-3.5 rounded-xl bg-pay-rose/10 border border-pay-rose/30 flex items-center gap-2 text-pay-rose text-xs">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        {/* Right Form Column */}
+        <div className="p-8 flex flex-col justify-between">
           <div>
-            <label className="block font-semibold text-gray-300 mb-1">Slug do Merchant / E-commerce *</label>
-            <div className="relative">
-              <Building className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                required
-                placeholder="ex: techstore"
-                value={merchantSlug}
-                onChange={(e) => setMerchantSlug(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 bg-pay-darker border border-pay-border rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-pay-accent font-mono"
-              />
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="font-bold text-white text-lg font-sans">Acessar Console</h3>
+                <p className="text-xs text-fintech-muted font-mono">Entre com sua credencial de merchant</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleFillDemo}
+                className="px-2.5 py-1 bg-fintech-neon/15 hover:bg-fintech-neon/25 border border-fintech-neon/40 text-fintech-neon rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer flex items-center gap-1"
+                title="Preencher Conta Demo TechStore"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Demo 1-Click</span>
+              </button>
             </div>
+
+            {error && (
+              <div className="p-3 mb-4 rounded-xl bg-fintech-rose/10 border border-fintech-rose/30 text-fintech-rose text-xs font-mono">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4 text-xs font-mono">
+              <div>
+                <label className="block text-slate-400 mb-1">Slug do Merchant (Identificador)</label>
+                <div className="relative">
+                  <Building2 className="w-4 h-4 text-fintech-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="ex: techstore"
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value.toLowerCase().trim())}
+                    className="w-full pl-9 pr-3 py-2.5 bg-fintech-bg border border-fintech-border rounded-xl text-white focus:outline-none focus:border-fintech-neon"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">E-mail Corporativo</label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-fintech-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="admin@empresa.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 bg-fintech-bg border border-fintech-border rounded-xl text-white focus:outline-none focus:border-fintech-neon font-sans"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Senha de Acesso</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-fintech-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 bg-fintech-bg border border-fintech-border rounded-xl text-white focus:outline-none focus:border-fintech-neon"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full mt-2 py-3 bg-gradient-to-r from-fintech-neon to-cyan-400 hover:from-cyan-400 hover:to-fintech-neon text-black font-extrabold rounded-xl shadow-lg shadow-fintech-neon/20 transition-all cursor-pointer disabled:opacity-50 text-xs flex items-center justify-center gap-2"
+              >
+                <span>{loading ? 'Autenticando...' : 'Entrar no Console'}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
           </div>
 
-          <div>
-            <label className="block font-semibold text-gray-300 mb-1">E-mail Corporativo *</label>
-            <div className="relative">
-              <Mail className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="email"
-                required
-                placeholder="admin@techstore.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 bg-pay-darker border border-pay-border rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-pay-accent"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block font-semibold text-gray-300 mb-1">Senha de Acesso *</label>
-            <div className="relative">
-              <Lock className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="password"
-                required
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 bg-pay-darker border border-pay-border rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-pay-accent"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-2 py-3 px-4 bg-pay-accent hover:bg-pay-accentHover text-white font-medium rounded-xl transition-all shadow-lg shadow-pay-accent/25 flex items-center justify-center gap-2 group cursor-pointer disabled:opacity-50 text-sm"
-          >
-            <span>{loading ? 'Autenticando...' : 'Acessar Gateway'}</span>
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </button>
-        </form>
-
-        <div className="mt-4 pt-4 border-t border-pay-border/60 flex flex-col gap-2.5">
-          <button
-            type="button"
-            onClick={handleFillDemo}
-            className="w-full py-2 px-3 bg-pay-dark hover:bg-pay-border/40 border border-pay-border text-xs text-gray-300 hover:text-white rounded-xl transition-all font-mono"
-          >
-            ⚡ Preencher Conta Demo (TechStore)
-          </button>
-
-          <div className="text-center text-xs text-gray-400">
-            Ainda não é cadastrado?{' '}
-            <Link to="/register" className="text-pay-accent hover:underline font-medium">
-              Criar Conta Merchant ➔
+          <div className="pt-6 text-center text-xs font-mono text-fintech-muted">
+            <span>Ainda não possui conta de Merchant? </span>
+            <Link to="/register" className="text-fintech-neon hover:underline font-bold">
+              Criar Conta Grátis
             </Link>
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-pay-border/40 flex items-center justify-center gap-2 text-[11px] text-gray-500">
-          <ShieldCheck className="w-3.5 h-3.5 text-pay-emerald" />
-          <span>Gateway Criptografado & Split Automatizado</span>
-        </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

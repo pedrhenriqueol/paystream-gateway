@@ -1,241 +1,203 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { maskCNPJ } from '../utils/masks';
-import { CreditCard, Building, User, Mail, Lock, FileText, ArrowRight, AlertCircle, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { maskCpfCnpj } from '../utils/masks';
+import { Zap, Lock, Mail, Building2, ArrowRight, User, ShieldCheck, Sparkles } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export const Register: React.FC = () => {
-  const navigate = useNavigate();
-  const { login } = useAuth();
-
-  const [merchantName, setMerchantName] = useState('');
-  const [merchantSlug, setMerchantSlug] = useState('');
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
   const [document, setDocument] = useState('');
   const [adminName, setAdminName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
 
-  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setMerchantName(val);
-    if (!merchantSlug) {
-      setMerchantSlug(val.toLowerCase().replace(/[^a-z0-9]/g, ''));
-    }
+  const { register } = useAuth();
+  const navigate = useNavigate();
+
+  const handleNameChange = (val: string) => {
+    setName(val);
+    const autoSlug = val.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    setSlug(autoSlug);
+  };
+
+  const handleFillDemo = () => {
+    setName('Prime Payments Brasil');
+    setSlug('primepay');
+    setDocument('12.345.678/0001-90');
+    setAdminName('Diretoria Financeira');
+    setAdminEmail('admin@primepay.com.br');
+    setAdminPassword('pedrooliveira1227!');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     setError('');
 
-    if (password.length < 8) {
-      setError('A senha deve conter no mínimo 8 caracteres.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('As senhas digitadas não coincidem.');
-      return;
-    }
-
-    setLoading(true);
-
     try {
-      await api.post('/auth/register-merchant', {
-        merchantName: merchantName.trim(),
-        merchantSlug: merchantSlug.trim().toLowerCase(),
-        document: document.trim(),
-        adminName: adminName.trim(),
-        email: email.trim().toLowerCase(),
-        password
+      await register({
+        name,
+        slug,
+        document,
+        adminName,
+        adminEmail,
+        adminPassword
       });
-
-      setSuccess(true);
-
-      setTimeout(async () => {
-        await login(merchantSlug.trim().toLowerCase(), email.trim().toLowerCase(), password);
-        navigate('/', { replace: true });
-      }, 1500);
-
+      navigate('/');
     } catch (err: any) {
       setError(err.message || 'Erro ao registrar merchant.');
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pay-darker via-pay-dark to-[#0F172A] p-4 sm:p-6 relative overflow-hidden">
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-pay-accent/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-pay-emerald/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen bg-fintech-bg text-slate-100 flex items-center justify-center p-4 selection:bg-fintech-neon selection:text-black relative overflow-hidden">
+      <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-fintech-neon/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-fintech-violet/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="w-full max-w-xl bg-pay-card/90 backdrop-blur-xl border border-pay-border rounded-2xl p-6 sm:p-8 shadow-2xl relative z-10 my-8">
-        
-        <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-12 h-12 rounded-xl bg-pay-accent/20 border border-pay-accent/40 flex items-center justify-center text-pay-accent mb-2.5 shadow-md">
-            <CreditCard className="w-6 h-6" />
+      <motion.div 
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-xl glass-panel border border-fintech-border rounded-3xl p-8 shadow-2xl relative z-10 space-y-6"
+      >
+        <div className="flex items-center justify-between pb-4 border-b border-fintech-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-fintech-neon to-fintech-violet p-[1px]">
+              <div className="w-full h-full bg-fintech-bg rounded-[11px] flex items-center justify-center text-fintech-neon">
+                <Zap className="w-5 h-5 fill-current" />
+              </div>
+            </div>
+            <div>
+              <span className="font-extrabold tracking-tight text-white text-lg">PAYSTREAM</span>
+              <span className="text-[10px] font-mono text-fintech-muted block">CREDENCIAMENTO MERCHANT</span>
+            </div>
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-            PayStream <span className="text-pay-accent font-mono text-xs px-2 py-0.5 rounded bg-pay-accent/10 border border-pay-accent/30">GATEWAY</span>
-          </h1>
-          <p className="text-xs text-gray-400 mt-1">Credenciamento de Novo E-commerce / Marketplace</p>
+
+          <button
+            type="button"
+            onClick={handleFillDemo}
+            className="px-2.5 py-1 bg-fintech-neon/15 hover:bg-fintech-neon/25 border border-fintech-neon/40 text-fintech-neon rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer flex items-center gap-1"
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>Preencher Demo</span>
+          </button>
         </div>
 
         {error && (
-          <div className="mb-4 p-3.5 rounded-xl bg-pay-rose/10 border border-pay-rose/30 flex items-center gap-2.5 text-pay-rose text-xs">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+          <div className="p-3 rounded-xl bg-fintech-rose/10 border border-fintech-rose/30 text-fintech-rose text-xs font-mono">
+            {error}
           </div>
         )}
 
-        {success && (
-          <div className="mb-4 p-3.5 rounded-xl bg-pay-emerald/10 border border-pay-emerald/30 flex items-center gap-2.5 text-pay-emerald text-xs">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>Merchant cadastrado com sucesso! Emitindo chaves de API...</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs font-mono">
           
-          <div className="space-y-3 pb-3 border-b border-pay-border/50">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-pay-accent flex items-center gap-1.5">
-              <Building className="w-3.5 h-3.5" />
-              1. Dados da Loja / Empresa
-            </span>
+          <div className="space-y-3">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">1. Dados da Empresa / E-commerce</span>
 
             <div>
-              <label className="block font-semibold text-gray-300 mb-1">Nome Fantasia / Razão Social *</label>
+              <label className="block text-slate-400 mb-1">Razão Social ou Nome Fantasia</label>
               <input
                 type="text"
                 required
-                placeholder="Ex: TechStore Informática Ltda"
-                value={merchantName}
-                onChange={handleNameChange}
-                className="w-full px-3 py-2 bg-pay-darker border border-pay-border rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-pay-accent"
+                placeholder="Ex: TechStore Brasil LTDA"
+                value={name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                className="w-full px-3 py-2 bg-fintech-bg border border-fintech-border rounded-xl text-white focus:outline-none focus:border-fintech-neon font-sans"
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block font-semibold text-gray-300 mb-1">Identificador de URL (Slug) *</label>
+                <label className="block text-slate-400 mb-1">Slug (Identificador URL)</label>
                 <input
                   type="text"
                   required
                   placeholder="techstore"
-                  value={merchantSlug}
-                  onChange={(e) => setMerchantSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                  className="w-full px-3 py-2 bg-pay-darker border border-pay-border rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-pay-accent font-mono"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  className="w-full px-3 py-2 bg-fintech-bg border border-fintech-border rounded-xl text-fintech-neon focus:outline-none focus:border-fintech-neon font-bold"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-gray-300 mb-1">CNPJ / CPF *</label>
-                <div className="relative">
-                  <FileText className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="00.000.000/0001-00"
-                    value={document}
-                    onChange={(e) => setDocument(maskCNPJ(e.target.value))}
-                    className="w-full pl-8 pr-3 py-2 bg-pay-darker border border-pay-border rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-pay-accent font-mono"
-                  />
-                </div>
+                <label className="block text-slate-400 mb-1">CNPJ / CPF</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="00.000.000/0001-00"
+                  value={document}
+                  onChange={(e) => setDocument(maskCpfCnpj(e.target.value))}
+                  className="w-full px-3 py-2 bg-fintech-bg border border-fintech-border rounded-xl text-white focus:outline-none focus:border-fintech-neon"
+                />
               </div>
             </div>
           </div>
 
-          <div className="space-y-3 pt-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-pay-emerald flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5" />
-              2. Administrador Financeiro
-            </span>
+          <div className="space-y-3 pt-3 border-t border-fintech-border">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">2. Administrador Financeiro</span>
 
             <div>
-              <label className="block font-semibold text-gray-300 mb-1">Nome Completo do Responsável *</label>
+              <label className="block text-slate-400 mb-1">Nome do Gestor</label>
               <input
                 type="text"
                 required
-                placeholder="Ex: Pedro Henrique"
+                placeholder="Pedro Henrique"
                 value={adminName}
                 onChange={(e) => setAdminName(e.target.value)}
-                className="w-full px-3 py-2 bg-pay-darker border border-pay-border rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-pay-accent"
+                className="w-full px-3 py-2 bg-fintech-bg border border-fintech-border rounded-xl text-white focus:outline-none focus:border-fintech-neon font-sans"
               />
             </div>
 
-            <div>
-              <label className="block font-semibold text-gray-300 mb-1">E-mail Corporativo de Acesso *</label>
-              <div className="relative">
-                <Mail className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-400 mb-1">E-mail</label>
                 <input
                   type="email"
                   required
-                  placeholder="admin@techstore.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 bg-pay-darker border border-pay-border rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-pay-accent"
+                  placeholder="admin@empresa.com"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  className="w-full px-3 py-2 bg-fintech-bg border border-fintech-border rounded-xl text-white focus:outline-none focus:border-fintech-neon font-sans"
                 />
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block font-semibold text-gray-300 mb-1">Senha * (mín. 8 chars)</label>
-                <div className="relative">
-                  <Lock className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-8 pr-3 py-2 bg-pay-darker border border-pay-border rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-pay-accent"
-                  />
-                </div>
-              </div>
 
               <div>
-                <label className="block font-semibold text-gray-300 mb-1">Confirmar Senha *</label>
-                <div className="relative">
-                  <Lock className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-8 pr-3 py-2 bg-pay-darker border border-pay-border rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-pay-accent"
-                  />
-                </div>
+                <label className="block text-slate-400 mb-1">Senha</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••••••"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  className="w-full px-3 py-2 bg-fintech-bg border border-fintech-border rounded-xl text-white focus:outline-none focus:border-fintech-neon"
+                />
               </div>
             </div>
           </div>
 
           <button
             type="submit"
-            disabled={loading || success}
-            className="w-full mt-4 py-3 px-4 bg-pay-accent hover:bg-pay-accentHover text-white font-medium rounded-xl transition-all shadow-lg shadow-pay-accent/25 flex items-center justify-center gap-2 group cursor-pointer disabled:opacity-50 text-sm"
+            disabled={loading}
+            className="w-full mt-4 py-3 bg-gradient-to-r from-fintech-neon to-cyan-400 hover:from-cyan-400 hover:to-fintech-neon text-black font-extrabold rounded-xl shadow-lg shadow-fintech-neon/20 transition-all cursor-pointer disabled:opacity-50 text-xs flex items-center justify-center gap-2"
           >
-            {loading ? <span>Gerando Chaves de API...</span> : (
-              <>
-                <span>Cadastrar E-commerce & Acessar</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </>
-            )}
+            <span>{loading ? 'Criando Conta...' : 'Emitir Credenciais de Merchant'}</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
-        <div className="mt-5 text-center text-xs text-gray-400">
-          Já tem conta?{' '}
-          <Link to="/login" className="text-pay-accent hover:underline font-medium">
-            Fazer login
+        <div className="pt-2 text-center text-xs font-mono text-fintech-muted">
+          <span>Já tem uma conta? </span>
+          <Link to="/login" className="text-fintech-neon hover:underline font-bold">
+            Fazer Login
           </Link>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };
