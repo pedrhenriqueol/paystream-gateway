@@ -1,14 +1,23 @@
 import axios from 'axios';
 
+// Normalização resiliente da baseURL da API (compatível com localhost, Render, Vercel)
+const rawBaseURL = import.meta.env.VITE_API_URL || 'http://localhost:3334/api/v1';
+const cleanBase = rawBaseURL.replace(/\/+$/, '');
+const baseURL = cleanBase.includes('/api/v1')
+  ? cleanBase
+  : cleanBase.includes('/api')
+    ? `${cleanBase}/v1`
+    : `${cleanBase}/api/v1`;
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3334/api/v1',
+  baseURL,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
   }
 });
 
-// Use localStorage consistently (same as AuthContext)
+// Interceptor para injetar JWT de merchant
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('paystream_token');
   if (token) {
@@ -17,6 +26,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Interceptor para tratamento humanizado de respostas e erros
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -29,7 +39,6 @@ api.interceptors.response.use(
     if (error.response?.data?.message) {
       message = error.response.data.message;
     } else if (error.response?.data?.errors) {
-      // Zod validation errors - format nicely
       const zodErrors = error.response.data.errors;
       const fieldErrors: string[] = [];
       for (const [key, val] of Object.entries(zodErrors)) {

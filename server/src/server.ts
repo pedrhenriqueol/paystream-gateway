@@ -41,12 +41,18 @@ async function bootstrap() {
 
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
 
-  // ── ROTAS DA API ──
-  await app.register(authRoutes, { prefix: '/api/v1/auth' });
-  await app.register(transactionRoutes, { prefix: '/api/v1/transactions' });
-  await app.register(recipientRoutes, { prefix: '/api/v1/recipients' });
-  await app.register(webhookRoutes, { prefix: '/api/v1/webhooks' });
-  await app.register(dashboardRoutes, { prefix: '/api/v1/dashboard' });
+  // ── ROTAS DA API (Compatibilidade com /api/v1, /api e rotas diretas) ──
+  const registerRoutes = async (basePrefix: string) => {
+    await app.register(authRoutes, { prefix: `${basePrefix}/auth` });
+    await app.register(transactionRoutes, { prefix: `${basePrefix}/transactions` });
+    await app.register(recipientRoutes, { prefix: `${basePrefix}/recipients` });
+    await app.register(webhookRoutes, { prefix: `${basePrefix}/webhooks` });
+    await app.register(dashboardRoutes, { prefix: `${basePrefix}/dashboard` });
+  };
+
+  await registerRoutes('/api/v1');
+  await registerRoutes('/api');
+  await registerRoutes('');
 
   // ── TRATAMENTO CENTRALIZADO DE ERROS ──
   app.setErrorHandler((error, request, reply) => {
