@@ -9,11 +9,15 @@ const envSchema = z.object({
   CLIENT_URL: z.string().default('http://localhost:5174')
 });
 
-const _env = envSchema.safeParse(process.env);
+let parsedEnv: z.infer<typeof envSchema>;
 
-if (!_env.success) {
-  console.error('❌ Erro crítico: Variáveis de ambiente inválidas:', _env.error.format());
+try {
+  parsedEnv = envSchema.parse(process.env);
+} catch (error) {
+  if (error instanceof z.ZodError) {
+    console.error('❌ Erro crítico: Variáveis de ambiente inválidas:', error.format());
+  }
   process.exit(1);
 }
 
-export const env = _env.data;
+export const env = parsedEnv;
