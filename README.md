@@ -208,7 +208,7 @@ VITE_API_URL="http://localhost:3334/api/v1"
    * **Credenciais de Demonstração (Seed):**
      * Slug: `techstore`
      * E-mail: `admin@techstore.com`
-     * Senha: `pedrooliveira1227!`
+     * Senha: `admin@123`
 
 ---
 
