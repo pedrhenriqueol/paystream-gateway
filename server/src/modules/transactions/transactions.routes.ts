@@ -7,7 +7,7 @@ import { AppError } from '../../shared/errors/AppError.js';
 import { authenticate } from '../../middlewares/auth.js';
 
 export async function transactionRoutes(app: FastifyInstance) {
-  // ── 1. CHECKOUT PÚBLICO / API DE PAGAMENTO (Criação de Transação) ──
+  // ── 1. CHECKOUT PÚBLICO / API DE PAGAMENTO (Com Suporte a Idempotency-Key) ──
   app.post('/process', async (request, reply) => {
     const processSchema = z.object({
       merchantApiKey: z.string().min(10),
@@ -36,12 +36,53 @@ export async function transactionRoutes(app: FastifyInstance) {
 
     const body = processSchema.parse(request.body);
 
+    // Verificação de Chave de Idempotência (previne cobrança dupla e race conditions)
+    const idempotencyKey = (
+      request.headers['idempotency-key'] ||
+      request.headers['x-idempotency-key']
+    ) as string | undefined;
+
     const merchant = await prisma.merchant.findUnique({
       where: { apiKeyLive: body.merchantApiKey }
     });
 
     if (!merchant) {
       throw new AppError('Chave de API do Merchant inválida.', 401);
+    }
+
+    // Se chave de idempotência foi fornecida, verifica se a transação já foi processada
+    const targetExternalId = body.externalId || idempotencyKey;
+
+    if (targetExternalId) {
+      const existingTx = await prisma.transaction.findFirst({
+        where: {
+          merchantId: merchant.id,
+          externalId: targetExternalId
+        },
+        include: { splits: true }
+      });
+
+      if (existingTx) {
+        reply.header('X-Idempotent-Replay', 'true');
+        if (idempotencyKey) {
+          reply.header('X-Idempotency-Key', idempotencyKey);
+        }
+        return reply.status(200).send({
+          message: 'Transação retornada de forma idempotente (já processada anteriormente sem dupla cobrança).',
+          idempotent: true,
+          transaction: {
+            id: existingTx.id,
+            amount: existingTx.amount,
+            status: existingTx.status,
+            paymentMethod: existingTx.paymentMethod,
+            pixPayload: existingTx.pixPayload,
+            pixQrCode: existingTx.pixQrCode,
+            cardLastDigits: existingTx.cardLastDigits,
+            cardBrand: existingTx.cardBrand,
+            paidAt: existingTx.paidAt
+          }
+        });
+      }
     }
 
     // Cálculo das taxas
@@ -77,7 +118,7 @@ export async function transactionRoutes(app: FastifyInstance) {
       const created = await tx.transaction.create({
         data: {
           merchantId: merchant.id,
-          externalId: body.externalId,
+          externalId: targetExternalId,
           amount: grossAmount,
           netAmount,
           feeAmount,
@@ -127,7 +168,7 @@ export async function transactionRoutes(app: FastifyInstance) {
             transactionId: created.id,
             event: 'transaction.paid',
             payload,
-            signature,
+            signature: `t=${Date.now()},v1=${signature}`,
             endpointUrl: merchant.webhookUrl,
             status: 'DELIVERED',
             responseStatus: 200
@@ -137,6 +178,10 @@ export async function transactionRoutes(app: FastifyInstance) {
 
       return created;
     });
+
+    if (idempotencyKey) {
+      reply.header('X-Idempotency-Key', idempotencyKey);
+    }
 
     return reply.status(201).send({
       message: 'Transação processada pelo gateway PayStream!',
@@ -199,7 +244,7 @@ export async function transactionRoutes(app: FastifyInstance) {
             transactionId: t.id,
             event: 'transaction.paid',
             payload,
-            signature,
+            signature: `t=${Date.now()},v1=${signature}`,
             endpointUrl: transaction.merchant.webhookUrl,
             status: 'DELIVERED',
             responseStatus: 200
@@ -213,7 +258,87 @@ export async function transactionRoutes(app: FastifyInstance) {
     return reply.send({ message: 'Pagamento PIX liquidado instantaneamente!', transaction: updated });
   });
 
-  // ── 3. LISTAR TRANSAÇÕES DO MERCHANT (PROTEGIDO) ──
+  // ── 3. EXPORTAR EXTRATO DE CONCILIAÇÃO FINANCEIRA COM CHECKSUM SHA-256 ──
+  app.get('/export-statement', { preHandler: [authenticate] }, async (request, reply) => {
+    const { merchantId } = request.user;
+
+    const merchant = await prisma.merchant.findUnique({
+      where: { id: merchantId }
+    });
+
+    if (!merchant) {
+      throw new AppError('Merchant não encontrado.', 404);
+    }
+
+    const transactions = await prisma.transaction.findMany({
+      where: { merchantId },
+      orderBy: { createdAt: 'desc' },
+      include: { splits: { include: { recipient: true } } }
+    });
+
+    let totalGross = 0;
+    let totalFees = 0;
+    let totalNet = 0;
+    let paidCount = 0;
+    let pendingCount = 0;
+
+    for (const tx of transactions) {
+      if (tx.status === 'PAID') {
+        totalGross += Number(tx.amount);
+        totalFees += Number(tx.feeAmount);
+        totalNet += Number(tx.netAmount);
+        paidCount++;
+      } else {
+        pendingCount++;
+      }
+    }
+
+    const statementData = {
+      merchant: {
+        id: merchant.id,
+        name: merchant.name,
+        slug: merchant.slug,
+        document: merchant.document
+      },
+      summary: {
+        totalTransactions: transactions.length,
+        paidCount,
+        pendingCount,
+        totalGross: Number(totalGross.toFixed(2)),
+        totalFees: Number(totalFees.toFixed(2)),
+        totalNet: Number(totalNet.toFixed(2))
+      },
+      transactions: transactions.map(t => ({
+        id: t.id,
+        externalId: t.externalId,
+        date: t.createdAt.toISOString(),
+        paymentMethod: t.paymentMethod,
+        status: t.status,
+        customerName: t.customerName,
+        customerDoc: t.customerDoc,
+        amount: Number(t.amount),
+        feeAmount: Number(t.feeAmount),
+        netAmount: Number(t.netAmount),
+        splitsCount: t.splits.length
+      })),
+      generatedAt: new Date().toISOString()
+    };
+
+    // Gera Checksum SHA-256 de integridade contábil
+    const checksum = crypto
+      .createHash('sha256')
+      .update(JSON.stringify(statementData))
+      .digest('hex');
+
+    reply.header('X-Statement-Checksum', `sha256:${checksum}`);
+
+    return reply.send({
+      ...statementData,
+      checksum: `sha256:${checksum}`
+    });
+  });
+
+  // ── 4. LISTAR TRANSAÇÕES DO MERCHANT (PROTEGIDO) ──
   app.get('/', { preHandler: [authenticate] }, async (request, reply) => {
     const { merchantId } = request.user;
 
@@ -225,7 +350,7 @@ export async function transactionRoutes(app: FastifyInstance) {
         }
       },
       orderBy: { createdAt: 'desc' },
-      take: 50
+      take: 100
     });
 
     return reply.send({ transactions });

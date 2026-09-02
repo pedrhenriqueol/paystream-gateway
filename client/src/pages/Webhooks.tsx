@@ -21,8 +21,35 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+const nodeSnippet = `// Exemplo de Verificação no Node.js com Proteção a Replay Attacks (5 min)
+const crypto = require('crypto');
+
+function verifyPayStreamWebhook(payload, signatureHeader, secret) {
+  const parts = signatureHeader.split(',');
+  const timestamp = Number(parts.find(p => p.trim().startsWith('t='))?.replace('t=', ''));
+  const receivedHash = parts.find(p => p.trim().startsWith('v1='))?.replace('v1=', '');
+
+  // 1. Proteção contra Replay Attack (tolerância de 5 minutos = 300.000 ms)
+  const toleranceMs = 5 * 60 * 1000;
+  if (Math.abs(Date.now() - timestamp) > toleranceMs) {
+    throw new Error('Assinatura expirada (possível Replay Attack detectado).');
+  }
+
+  // 2. Cálculo do HMAC-SHA256 com a chave secreta
+  const expectedHash = crypto
+    .createHmac('sha256', secret)
+    .update(typeof payload === 'string' ? payload : JSON.stringify(payload))
+    .digest('hex');
+
+  // 3. Comparação em tempo constante contra Timing Attacks
+  return crypto.timingSafeEqual(
+    Buffer.from(receivedHash, 'hex'),
+    Buffer.from(expectedHash, 'hex')
+  );
+};`;
+
 export const Webhooks: React.FC = () => {
-  const { merchant, user } = useAuth();
+  const { merchant, user, refreshSession } = useAuth();
   const [logs, setLogs] = useState<WebhookLog[]>([]);
   const [webhookUrl, setWebhookUrl] = useState(merchant?.webhookUrl || user?.merchant.webhookUrl || '');
   const [loading, setLoading] = useState(true);
@@ -31,6 +58,28 @@ export const Webhooks: React.FC = () => {
   const [copiedSecret, setCopiedSecret] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'payload' | 'signature' | 'sdk'>('payload');
+  const [showRotateModal, setShowRotateModal] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [rotatingKeys, setRotatingKeys] = useState(false);
+
+  const handleRotateKeys = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRotatingKeys(true);
+    try {
+      const res = await api.post('/auth/rotate-keys', { adminPassword });
+      if (refreshSession) await refreshSession();
+      setShowRotateModal(false);
+      setAdminPassword('');
+      setMsg({
+        type: 'success',
+        text: `Chaves rotacionadas com sucesso! Nova Live Key: ${res.data.apiKeyLive.slice(0, 16)}... • Antigas chaves revogadas.`
+      });
+    } catch (err: any) {
+      alert(`Erro ao rotacionar chaves: ${err.message}`);
+    } finally {
+      setRotatingKeys(false);
+    }
+  };
 
   const secret = merchant?.webhookSecret || user?.merchant.webhookSecret || 'whsec_a1b2c3d4e5f67890123456789abcdef012345678';
 
@@ -196,14 +245,25 @@ export const Webhooks: React.FC = () => {
             <div>
               <div className="flex justify-between items-center mb-1">
                 <label className="text-slate-400">Chave Secreta de Assinatura (Webhook Secret):</label>
-                <button
-                  type="button"
-                  onClick={copySecret}
-                  className="text-fintech-neon hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
-                >
-                  {copiedSecret ? <Check className="w-3 h-3 text-fintech-emerald" /> : <Copy className="w-3 h-3" />}
-                  <span>{copiedSecret ? 'Copiado!' : 'Copiar Secret'}</span>
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowRotateModal(true)}
+                    className="text-amber-400 hover:text-amber-300 flex items-center gap-1 text-[11px] cursor-pointer hover:underline"
+                    title="Revogar chaves atuais e emitir novo par"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Rotacionar Chaves</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={copySecret}
+                    className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 text-[11px] cursor-pointer hover:underline"
+                  >
+                    {copiedSecret ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedSecret ? 'Copiado!' : 'Copiar Secret'}</span>
+                  </button>
+                </div>
               </div>
               <input
                 type="text"
@@ -277,14 +337,8 @@ export const Webhooks: React.FC = () => {
           </div>
         ) : (
           <div className="p-4 rounded-xl bg-fintech-bg border border-fintech-border font-mono text-xs overflow-x-auto custom-scrollbar">
-            <pre className="text-slate-300 leading-relaxed">
-{`const crypto = require('crypto');
-
-function verifyPayStreamWebhook(payloadString, signatureHeader, secret) {
-  const hmac = crypto.createHmac('sha256', secret);
-  const digest = hmac.update(payloadString).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signatureHeader));
-}`}
+            <pre className="text-slate-300 leading-relaxed font-mono text-xs overflow-x-auto">
+              {nodeSnippet}
             </pre>
           </div>
         )}
@@ -355,6 +409,60 @@ function verifyPayStreamWebhook(payloadString, signatureHeader, secret) {
           </table>
         </div>
       </div>
+    
+      {/* Modal de Confirmação para Rotação de Chaves */}
+      {showRotateModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Rotacionar Chaves de API</h3>
+                <p className="text-xs text-slate-400 font-normal">Revogação imediata de credenciais antigas</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed font-sans">
+              Por segurança bancária, a Live API Key e o Webhook Secret atuais serão revogados permanentemente. Suas integrações deverão ser atualizadas com as novas credenciais.
+            </p>
+
+            <form onSubmit={handleRotateKeys} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5 font-sans">
+                  Senha do Administrador
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Digite sua senha de login"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-xs focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all font-sans"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowRotateModal(false); setAdminPassword(''); }}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={rotatingKeys || !adminPassword}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-amber-600 hover:from-rose-400 hover:to-amber-500 text-white font-semibold text-xs transition-all shadow-md shadow-rose-950/40 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {rotatingKeys ? 'Rotacionando...' : 'Confirmar e Rotacionar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 };

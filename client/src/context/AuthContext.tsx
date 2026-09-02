@@ -17,6 +17,7 @@ interface AuthContextType {
     adminPassword: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -145,7 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, merchant, token, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, merchant, token, loading, login, register, logout, refreshSession: fetchMe }}>
       {children}
     </AuthContext.Provider>
   );

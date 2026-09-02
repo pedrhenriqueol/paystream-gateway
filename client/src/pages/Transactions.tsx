@@ -79,11 +79,45 @@ export const Transactions: React.FC = () => {
     return matchesSearch && matchesMethod && matchesStatus;
   });
 
-  const exportJSON = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(filteredTransactions, null, 2));
+  const [statementChecksum, setStatementChecksum] = useState<string | null>(null);
+
+  const exportAuditedStatement = async () => {
+    try {
+      const res = await api.get('/transactions/export-statement');
+      const data = res.data;
+      setStatementChecksum(data.checksum);
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `paystream_extrato_conciliacao_${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    } catch (err: any) {
+      alert(`Falha ao exportar extrato: ${err.message}`);
+    }
+  };
+
+  const exportCSV = () => {
+    const headers = ['ID', 'External ID', 'Data', 'Metodo', 'Status', 'Cliente', 'CPF/CNPJ', 'Valor Bruto', 'Fee Gateway', 'Valor Liquido'];
+    const rows = filteredTransactions.map(tx => [
+      tx.id,
+      tx.externalId || '',
+      new Date(tx.createdAt).toISOString(),
+      tx.paymentMethod,
+      tx.status,
+      `"${tx.customerName.replace(/"/g, '""')}"`,
+      tx.customerDoc,
+      Number(tx.amount).toFixed(2),
+      Number(tx.feeAmount).toFixed(2),
+      Number(tx.netAmount).toFixed(2)
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `paystream_ledger_${new Date().toISOString().slice(0, 10)}.json`);
+    downloadAnchor.setAttribute("href", encodeURI(csvContent));
+    downloadAnchor.setAttribute("download", `paystream_conciliacao_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
@@ -112,14 +146,23 @@ export const Transactions: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
-            onClick={exportJSON}
-            className="px-3 py-2 bg-fintech-surface hover:bg-fintech-surfaceHover border border-fintech-border hover:border-fintech-neon/40 text-xs font-mono text-slate-300 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Exportar Ledger em JSON"
+            onClick={exportCSV}
+            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer font-sans"
+            title="Exportar Planilha de Conciliação em CSV"
           >
-            <Download className="w-3.5 h-3.5 text-fintech-neon" />
-            <span>Exportar Ledger</span>
+            <Download className="w-3.5 h-3.5 text-slate-400" />
+            <span>Planilha CSV</span>
+          </button>
+
+          <button
+            onClick={exportAuditedStatement}
+            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/40 text-xs text-emerald-400 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer font-sans font-medium shadow-xs"
+            title="Exportar Extrato Oficial Auditado com Checksum SHA-256"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Extrato Auditado (SHA-256)</span>
           </button>
 
           <button
@@ -131,6 +174,20 @@ export const Transactions: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {statementChecksum && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-mono flex items-center justify-between gap-2"
+        >
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>Checksum de Auditoria Contábil: <strong className="text-white">{statementChecksum}</strong></span>
+          </div>
+          <button onClick={() => setStatementChecksum(null)} className="text-slate-400 hover:text-white text-xs">✕</button>
+        </motion.div>
+      )}
 
       {/* Filter Bar */}
       <div className="glass-panel p-4 rounded-2xl border border-fintech-border flex flex-col md:flex-row gap-3 items-center justify-between">

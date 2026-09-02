@@ -162,4 +162,79 @@ export async function webhookRoutes(app: FastifyInstance) {
       log
     });
   });
+
+  // ── 4. VERIFICAÇÃO DE ASSINATURA & PROTEÇÃO CONTRA REPLAY ATTACKS ──
+  app.post('/verify-signature', async (request, reply) => {
+    const schema = z.object({
+      payload: z.any(),
+      signature: z.string(), // "t=1700000000,v1=abcdef..."
+      secret: z.string().optional()
+    });
+
+    const { payload, signature, secret } = schema.parse(request.body);
+    const { merchantId } = request.user;
+
+    const merchant = await prisma.merchant.findUnique({
+      where: { id: merchantId }
+    });
+
+    const activeSecret = secret || merchant?.webhookSecret;
+    if (!activeSecret) {
+      throw new AppError('Chave secreta de webhook não configurada.', 400);
+    }
+
+    // Parse header "t={timestamp},v1={hash}"
+    const parts = signature.split(',');
+    const timestampPart = parts.find(p => p.trim().startsWith('t='));
+    const hashPart = parts.find(p => p.trim().startsWith('v1='));
+
+    if (!timestampPart || !hashPart) {
+      return reply.status(400).send({
+        valid: false,
+        reason: 'Formato de assinatura inválido. Esperado "t={timestamp},v1={hash}".'
+      });
+    }
+
+    const timestamp = Number(timestampPart.trim().replace('t=', ''));
+    const receivedHash = hashPart.trim().replace('v1=', '');
+
+    // Validação de tolerância a Replay Attack (5 minutos = 300 segundos)
+    const toleranceMs = 5 * 60 * 1000;
+    const timeDiff = Math.abs(Date.now() - timestamp);
+    const isExpired = timeDiff > toleranceMs;
+
+    const expectedHash = crypto
+      .createHmac('sha256', activeSecret)
+      .update(typeof payload === 'string' ? payload : JSON.stringify(payload))
+      .digest('hex');
+
+    // Comparação segura contra Timing Attacks
+    let isValidHash = false;
+    try {
+      isValidHash = crypto.timingSafeEqual(
+        Buffer.from(receivedHash, 'hex'),
+        Buffer.from(expectedHash, 'hex')
+      );
+    } catch {
+      isValidHash = false;
+    }
+
+    if (isExpired) {
+      return reply.status(401).send({
+        valid: false,
+        isExpired: true,
+        reason: `Assinatura expirada (possível Replay Attack). Diferença de tempo: ${Math.round(timeDiff / 1000)}s (máximo permitido: 300s).`,
+        timestamp,
+        toleranceSeconds: 300
+      });
+    }
+
+    return reply.send({
+      valid: isValidHash,
+      isExpired: false,
+      timestamp,
+      toleranceSeconds: 300,
+      verifiedAt: new Date().toISOString()
+    });
+  });
 }

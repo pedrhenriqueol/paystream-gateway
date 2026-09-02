@@ -62,12 +62,19 @@ export const CheckoutDemo: React.FC = () => {
     setCountdown(900);
 
     try {
+      // Gera chave de idempotência exclusiva para proteção contra double-click/dupla cobrança
+      const idempotencyKey = `idemp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const res = await api.post('/transactions/process', {
         merchantApiKey: apiKey,
+        externalId: idempotencyKey,
         amount: Number(amount),
         paymentMethod: method,
         customer: { name, email, document },
         creditCard: method === 'CREDIT_CARD' ? { cardNumber, holderName, expiry, cvv, installments: Number(installments) } : undefined
+      }, {
+        headers: {
+          'Idempotency-Key': idempotencyKey
+        }
       });
       setResult(res.data.transaction);
     } catch (err: any) {
