@@ -69,9 +69,15 @@ export const Webhooks: React.FC = () => {
     setTesting(true);
     setMsg(null);
     try {
-      await api.post('/webhooks/test-ping');
+      const res = await api.post('/webhooks/test-ping');
       await loadLogs();
-      setMsg({ type: 'success', text: 'Evento de teste "transaction.paid" assinado e disparado via HMAC-SHA256!' });
+      const httpStatus = res.data.responseStatus || 200;
+      const statusLabel = res.data.status === 'DELIVERED' ? 'Entregue' : 'Registrado';
+      const sigPreview = res.data.signature ? res.data.signature.slice(0, 24) + '...' : '';
+      setMsg({ 
+        type: 'success', 
+        text: `Webhook disparado com sucesso! Resposta HTTP ${httpStatus} (${statusLabel}) • Assinatura HMAC: ${sigPreview}` 
+      });
     } catch (err: any) {
       setMsg({ type: 'error', text: `Erro no disparo: ${err.message}` });
     } finally {
@@ -130,7 +136,7 @@ export const Webhooks: React.FC = () => {
         <button
           onClick={handleSimulateWebhook}
           disabled={testing}
-          className="px-4 py-2.5 bg-gradient-to-r from-fintech-neon to-cyan-400 hover:from-cyan-400 hover:to-fintech-neon text-black font-bold text-xs rounded-xl shadow-lg shadow-fintech-neon/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 w-fit"
+          className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-semibold text-xs rounded-xl shadow-md shadow-emerald-950/40 hover:shadow-emerald-900/50 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 w-fit"
         >
           <Send className="w-4 h-4 fill-current" />
           <span>{testing ? 'Disparando Ping...' : 'Disparar Webhook de Teste'}</span>
@@ -138,14 +144,21 @@ export const Webhooks: React.FC = () => {
       </div>
 
       {msg && (
-        <div className={`p-4 rounded-xl border text-xs font-mono flex items-center gap-2 ${
-          msg.type === 'success' 
-            ? 'bg-fintech-emerald/10 border-fintech-emerald/30 text-fintech-emerald' 
-            : 'bg-fintech-rose/10 border-fintech-rose/30 text-fintech-rose'
-        }`}>
-          {msg.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
-          <span>{msg.text}</span>
-        </div>
+        <motion.div 
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`p-4 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+            msg.type === 'success' 
+              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300' 
+              : 'bg-rose-500/10 border-rose-500/25 text-rose-300'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            {msg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />}
+            <span className="font-mono text-xs break-all">{msg.text}</span>
+          </div>
+          <button onClick={() => setMsg(null)} className="text-slate-400 hover:text-slate-200 text-xs px-1 cursor-pointer">✕</button>
+        </motion.div>
       )}
 
       {/* Endpoint & Signature Config Card */}

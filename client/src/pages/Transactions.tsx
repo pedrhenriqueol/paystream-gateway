@@ -189,7 +189,7 @@ export const Transactions: React.FC = () => {
       {/* Ledger Table */}
       <div className="glass-panel rounded-2xl border border-fintech-border overflow-hidden shadow-2xl">
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left text-xs font-mono">
+          <table className="w-full text-left text-xs font-mono min-w-[850px]">
             <thead className="bg-fintech-bg/90 border-b border-fintech-border text-fintech-muted uppercase tracking-wider text-[10px]">
               <tr>
                 <th className="py-3 px-4">Identificador / Data</th>
@@ -203,12 +203,43 @@ export const Transactions: React.FC = () => {
                 <th className="py-3 px-4 text-right">Ação</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-fintech-border/50 text-slate-300">
-              {filteredTransactions.length === 0 && !loading ? (
+            <tbody className="divide-y divide-slate-800/60 text-slate-300">
+              {loading ? (
+                Array.from({ length: 5 }).map((_, idx) => (
+                  <tr key={idx} className="animate-pulse">
+                    <td colSpan={9} className="py-4 px-4">
+                      <div className="h-4 bg-slate-800/60 rounded w-full" />
+                    </td>
+                  </tr>
+                ))
+              ) : filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-fintech-muted font-mono">
-                    <p className="text-sm">Nenhuma transação encontrada com os filtros selecionados.</p>
-                    <span className="text-[11px] text-slate-600 block mt-1">Realize um pagamento no Checkout Sandbox para gerar dados.</span>
+                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                    <div className="max-w-md mx-auto space-y-2">
+                      <div className="w-10 h-10 rounded-xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center mx-auto text-slate-400">
+                        <Filter className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <p className="text-sm font-semibold text-slate-200">Nenhuma transação encontrada</p>
+                      <p className="text-xs text-slate-500 font-sans">
+                        Não existem transações registradas para os filtros aplicados
+                        {methodFilter !== 'ALL' ? ` • Método: ${methodFilter === 'PIX' ? 'PIX' : 'Cartão'}` : ''}
+                        {statusFilter !== 'ALL' ? ` • Status: ${statusFilter === 'PAID' ? 'Aprovadas' : 'Pendentes'}` : ''}
+                        {searchTerm ? ` • Busca: "${searchTerm}"` : ''}.
+                      </p>
+                      {(methodFilter !== 'ALL' || statusFilter !== 'ALL' || searchTerm) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMethodFilter('ALL');
+                            setStatusFilter('ALL');
+                            setSearchTerm('');
+                          }}
+                          className="mt-3 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition-all cursor-pointer font-sans shadow-xs"
+                        >
+                          Limpar todos os filtros
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (
