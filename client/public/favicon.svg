@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Background with rounded corners and gradient -->
+  <rect width="64" height="64" rx="16" fill="#080C14"/>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="15.5" stroke="rgba(16, 185, 129, 0.3)" stroke-width="1"/>
+  
+  <!-- Subtle inner radial glow -->
+  <circle cx="32" cy="32" r="24" fill="url(#emeraldGlow)" opacity="0.4"/>
+  
+  <!-- Sleek Modern Lightning Bolt (Zap) -->
+  <path d="M35 12L19 33H31L27 52L45 29H33L35 12Z" 
+        fill="url(#zapGradient)" 
+        stroke="#10B981" 
+        stroke-width="1.5" 
+        stroke-linejoin="round"/>
+        
+  <!-- Defs for gradients -->
+  <defs>
+    <radialGradient id="emeraldGlow" cx="0.5" cy="0.5" r="0.5" fx="0.5" fy="0.5">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#080C14" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="zapGradient" x1="19" y1="12" x2="45" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+</svg>
