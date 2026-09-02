@@ -57,6 +57,22 @@ export const Recipients: React.FC = () => {
     loadRecipients();
   }, []);
 
+    const handleFillDemoSeller = (type: 'magazine' | 'inter' = 'magazine') => {
+    if (type === 'magazine') {
+      setName('Magazine Varejo Eireli');
+      setDocument('12.345.678/0001-90');
+      setBankCode('260');
+      setAgency('0001');
+      setAccount('9876543-2');
+    } else {
+      setName('Tech Eletrônicos Ltda');
+      setDocument('98.765.432/0001-10');
+      setBankCode('077');
+      setAgency('0001');
+      setAccount('1029384-5');
+    }
+  };
+
   const handleCreateRecipient = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
@@ -265,15 +281,38 @@ export const Recipients: React.FC = () => {
         </h3>
 
         {recipients.length === 0 && !loading ? (
-          <div className="glass-panel p-12 rounded-2xl border border-fintech-border text-center font-mono space-y-3">
+          <div className="glass-panel p-12 rounded-2xl border border-fintech-border text-center font-mono space-y-4">
             <UserCheck className="w-10 h-10 text-fintech-muted mx-auto" />
-            <p className="text-slate-300 text-sm">Nenhum seller cadastrado para split de pagamentos.</p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl cursor-pointer"
-            >
-              Cadastrar Primeiro Seller
-            </button>
+            <div>
+              <p className="text-slate-200 text-sm font-semibold">Nenhum seller cadastrado para split de pagamentos</p>
+              <p className="text-slate-500 text-xs mt-1">Cadastre seus parceiros para configurar comissões automáticas no checkout.</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  handleFillDemoSeller('magazine');
+                  setShowModal(true);
+                }}
+                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-purple-300 border border-purple-500/30 font-semibold text-xs rounded-xl cursor-pointer flex items-center gap-2 transition-all shadow-xs"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <span>Preencher Seller Demo (Magazine / Nubank)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setName('');
+                  setDocument('');
+                  setAccount('');
+                  setShowModal(true);
+                }}
+                className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl cursor-pointer transition-all shadow-md shadow-purple-950/40"
+              >
+                Cadastrar Seller Manualmente
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -332,8 +371,21 @@ export const Recipients: React.FC = () => {
             className="glass-panel border border-fintech-border w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4"
           >
             <div className="flex items-center justify-between pb-3 border-b border-fintech-border">
-              <h3 className="font-bold text-white text-base">Novo Seller para Split</h3>
-              <button onClick={() => setShowModal(false)} className="text-fintech-muted hover:text-white cursor-pointer">✕</button>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-white text-base">Novo Seller para Split</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleFillDemoSeller('magazine')}
+                  className="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[11px] font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Preencher automaticamente com Magazine Varejo (Nubank)"
+                >
+                  <Sparkles className="w-3 h-3 text-purple-400" />
+                  <span>Preencher Seller Demo</span>
+                </button>
+                <button onClick={() => setShowModal(false)} className="text-fintech-muted hover:text-white cursor-pointer px-1">✕</button>
+              </div>
             </div>
 
             <form onSubmit={handleCreateRecipient} className="space-y-3.5 text-xs font-mono">

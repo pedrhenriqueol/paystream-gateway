@@ -44,7 +44,7 @@ export async function webhookRoutes(app: FastifyInstance) {
   });
 
   // ── 3. DISPARAR WEBHOOK DE TESTE (SIMULAÇÃO HMAC-SHA256) ──
-  app.post('/test-ping', async (request, reply) => {
+  const testPingHandler = async (request: any, reply: any) => {
     const { merchantId } = request.user;
 
     const merchant = await prisma.merchant.findUnique({
@@ -81,11 +81,12 @@ export async function webhookRoutes(app: FastifyInstance) {
       transactionId = testTx.id;
     }
 
+    const timestamp = Date.now();
     const eventId = `evt_${crypto.randomBytes(12).toString('hex')}`;
     const payload = {
       id: eventId,
       event: 'transaction.paid',
-      created_at: new Date().toISOString(),
+      created_at: new Date(timestamp).toISOString(),
       data: {
         transaction_id: transactionId,
         amount: 249.90,
@@ -98,12 +99,12 @@ export async function webhookRoutes(app: FastifyInstance) {
       }
     };
 
-    const signature = crypto
+    const signatureHash = crypto
       .createHmac('sha256', merchant.webhookSecret)
       .update(JSON.stringify(payload))
       .digest('hex');
 
-    const formattedSignature = `t=${Date.now()},v1=${signature}`;
+    const formattedSignature = `t=${timestamp},v1=${signatureHash}`;
     const endpointUrl = merchant.webhookUrl || 'https://webhook.site/paystream-mock-ping';
     let responseStatus = 200;
     let deliveryStatus = 'DELIVERED';
@@ -112,7 +113,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       try {
         if (typeof fetch !== 'undefined') {
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3000);
+          const timeout = setTimeout(() => controller.abort(), 4000); // 4s timeout
           const res = await fetch(merchant.webhookUrl, {
             method: 'POST',
             headers: {
@@ -131,6 +132,9 @@ export async function webhookRoutes(app: FastifyInstance) {
         responseStatus = 504;
         deliveryStatus = 'FAILED';
       }
+    } else {
+      responseStatus = 200;
+      deliveryStatus = 'DELIVERED';
     }
 
     const log = await prisma.webhookLog.create({
@@ -155,13 +159,20 @@ export async function webhookRoutes(app: FastifyInstance) {
     return reply.status(200).send({
       success: true,
       eventId,
+      deliveryStatus,
+      timestamp,
       signature: formattedSignature,
-      deliveredAt: new Date().toISOString(),
       responseStatus,
       status: deliveryStatus,
+      deliveredAt: new Date(timestamp).toISOString(),
       log
     });
-  });
+  };
+
+  // Registro explícito da rota e aliases solicitados
+  app.post('/test-ping', testPingHandler);
+  app.post('/api/v1/webhooks/test-ping', testPingHandler);
+  app.post('/api/webhooks/test-ping', testPingHandler);
 
   // ── 4. VERIFICAÇÃO DE ASSINATURA & PROTEÇÃO CONTRA REPLAY ATTACKS ──
   app.post('/verify-signature', async (request, reply) => {
