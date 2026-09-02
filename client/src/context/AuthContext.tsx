@@ -22,28 +22,48 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [merchant, setMerchant] = useState<Merchant | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('paystream_token'));
-  const [loading, setLoading] = useState(true);
+  // Stale-While-Revalidate: Instant boot from cached credentials
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('paystream_token'));
+  
+  const [user, setUser] = useState<User | null>(() => {
+    const cached = localStorage.getItem('paystream_user');
+    return cached ? JSON.parse(cached) : null;
+  });
+
+  const [merchant, setMerchant] = useState<Merchant | null>(() => {
+    const cached = localStorage.getItem('paystream_merchant');
+    return cached ? JSON.parse(cached) : null;
+  });
+
+  // Only show full loading if we have a token but NO cached user
+  const [loading, setLoading] = useState<boolean>(() => {
+    const hasToken = !!localStorage.getItem('paystream_token');
+    const hasUser = !!localStorage.getItem('paystream_user');
+    return hasToken && !hasUser;
+  });
 
   const fetchMe = async () => {
     try {
       const response = await api.get('/auth/me');
-      // Backend returns { user: { id, name, email, role, merchant: { ... } } }
       const userData = response.data.user;
       const merchantData = userData.merchant;
 
-      setUser({
+      const fullUser = {
         id: userData.id,
         name: userData.name,
         email: userData.email,
         role: userData.role,
         merchant: merchantData
-      });
+      };
+
+      setUser(fullUser);
       setMerchant(merchantData);
+      localStorage.setItem('paystream_user', JSON.stringify(fullUser));
+      localStorage.setItem('paystream_merchant', JSON.stringify(merchantData));
     } catch {
       localStorage.removeItem('paystream_token');
+      localStorage.removeItem('paystream_user');
+      localStorage.removeItem('paystream_merchant');
       setToken(null);
       setUser(null);
       setMerchant(null);
@@ -61,17 +81,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [token]);
 
   const login = async (slug: string, email: string, password: string) => {
-    // Backend expects { merchantSlug, email, password }
     const response = await api.post('/auth/login', {
       merchantSlug: slug,
       email,
       password
     });
     const { token: newToken, user: userData, merchant: merchantData } = response.data;
+    
+    const fullUser = { ...userData, merchant: merchantData };
+
+    // Immediate persistence
     localStorage.setItem('paystream_token', newToken);
+    localStorage.setItem('paystream_user', JSON.stringify(fullUser));
+    localStorage.setItem('paystream_merchant', JSON.stringify(merchantData));
+
+    // Immediate state update
     setToken(newToken);
-    setUser({ ...userData, merchant: merchantData });
+    setUser(fullUser);
     setMerchant(merchantData);
+    setLoading(false);
   };
 
   const register = async (data: {
@@ -82,7 +110,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     adminEmail: string;
     adminPassword: string;
   }) => {
-    // Backend expects { merchantName, merchantSlug, document, adminName, email, password }
     const response = await api.post('/auth/register-merchant', {
       merchantName: data.name,
       merchantSlug: data.slug,
@@ -92,10 +119,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       password: data.adminPassword
     });
     const { token: newToken, user: userData, merchant: merchantData } = response.data;
+    const fullUser = { ...userData, merchant: merchantData };
+
     localStorage.setItem('paystream_token', newToken);
+    localStorage.setItem('paystream_user', JSON.stringify(fullUser));
+    localStorage.setItem('paystream_merchant', JSON.stringify(merchantData));
+
     setToken(newToken);
-    setUser({ ...userData, merchant: merchantData });
+    setUser(fullUser);
     setMerchant(merchantData);
+    setLoading(false);
   };
 
   const logout = async () => {
@@ -103,6 +136,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await api.post('/auth/logout');
     } catch {}
     localStorage.removeItem('paystream_token');
+    localStorage.removeItem('paystream_user');
+    localStorage.removeItem('paystream_merchant');
     sessionStorage.removeItem('paystream_cached_metrics');
     setToken(null);
     setUser(null);

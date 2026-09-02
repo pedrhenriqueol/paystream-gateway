@@ -9,6 +9,7 @@ export const Login: React.FC = () => {
   const [email, setEmail] = useState('admin@techstore.com');
   const [password, setPassword] = useState('pedrooliveira1227!');
   const [loading, setLoading] = useState(false);
+  const [coldStart, setColdStart] = useState(false);
   const [error, setError] = useState('');
 
   const { login } = useAuth();
@@ -24,11 +25,21 @@ export const Login: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setColdStart(false);
+
+    // Feedback visual caso o back-end esteja em Cold Start (> 1.5s)
+    const coldTimer = setTimeout(() => {
+      setColdStart(true);
+    }, 1500);
 
     try {
       await login(slug, email, password);
-      navigate('/');
+      clearTimeout(coldTimer);
+      // Redirecionamento instantâneo via router sem bloqueios secundários
+      navigate('/dashboard');
     } catch (err: any) {
+      clearTimeout(coldTimer);
+      setColdStart(false);
       setError(err.message || 'Credenciais inválidas. Verifique o identificador (slug) e a senha.');
     } finally {
       setLoading(false);
@@ -210,10 +221,19 @@ export const Login: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full mt-3 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-950/40 hover:shadow-emerald-900/50 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                className="w-full mt-3 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-950/40 hover:shadow-emerald-900/50 transition-all cursor-pointer disabled:opacity-75 flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
               >
-                <span>{loading ? 'Autenticando...' : 'Entrar no Console'}</span>
-                <ArrowRight className="w-4 h-4" />
+                {loading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    <span>{coldStart ? 'Iniciando engine segura... (pode levar alguns segundos)' : 'Autenticando...'}</span>
+                  </div>
+                ) : (
+                  <>
+                    <span>Entrar no Console</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
           </div>
