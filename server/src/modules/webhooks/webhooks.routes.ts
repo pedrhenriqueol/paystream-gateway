@@ -169,10 +169,8 @@ export async function webhookRoutes(app: FastifyInstance) {
     });
   };
 
-  // Registro explícito da rota e aliases solicitados
+  // Disparo de teste de webhook (resolvido com prefixo em /api/v1/webhooks/test-ping, /api/webhooks/test-ping e /webhooks/test-ping)
   app.post('/test-ping', testPingHandler);
-  app.post('/api/v1/webhooks/test-ping', testPingHandler);
-  app.post('/api/webhooks/test-ping', testPingHandler);
 
   // ── 4. VERIFICAÇÃO DE ASSINATURA & PROTEÇÃO CONTRA REPLAY ATTACKS ──
   app.post('/verify-signature', async (request, reply) => {
