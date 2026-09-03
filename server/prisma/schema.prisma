@@ -127,6 +127,9 @@ model Transaction {
   splits            SplitRule[]
   webhookDeliveries WebhookLog[]
 
+  @@unique([merchantId, externalId])
+  @@index([merchantId, createdAt(sort: Desc)])
+  @@index([merchantId, status])
   @@map("transactions")
   @@schema("paystream")
 }
@@ -142,6 +145,8 @@ model SplitRule {
   transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   recipient     Recipient   @relation(fields: [recipientId], references: [id], onDelete: Cascade)
 
+  @@index([transactionId])
+  @@index([recipientId])
   @@map("split_rules")
   @@schema("paystream")
 }

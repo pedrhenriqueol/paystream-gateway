@@ -6,12 +6,23 @@ import { prisma } from '../../shared/prisma.js';
 import { AppError } from '../../shared/errors/AppError.js';
 import { authenticate } from '../../middlewares/auth.js';
 
-// Cache em memória para proteção contra Brute Force no Login
+// Cache em memória para proteção contra Brute Force no Login com Eviction/TTL
 interface FailedAttempt {
   count: number;
   lockedUntil: number | null;
+  lastAttemptAt: number;
 }
 const failedLoginAttempts = new Map<string, FailedAttempt>();
+
+function purgeExpiredLoginAttempts() {
+  const now = Date.now();
+  for (const [key, val] of failedLoginAttempts.entries()) {
+    // Expira registros inativos há mais de 30 minutos ou bloqueios ultrapassados
+    if (now - val.lastAttemptAt > 30 * 60 * 1000) {
+      failedLoginAttempts.delete(key);
+    }
+  }
+}
 
 export async function authRoutes(app: FastifyInstance) {
   // ── 1. REGISTRAR NOVO MERCHANT (LOJA / MARKETPLACE) ──
@@ -111,6 +122,11 @@ export async function authRoutes(app: FastifyInstance) {
     const { merchantSlug, email, password } = loginSchema.parse(request.body);
     const lockKey = `${merchantSlug.toLowerCase()}:${email.toLowerCase()}`;
 
+    // Limpeza periódica de memória para prevenir memory leaks
+    if (failedLoginAttempts.size > 500) {
+      purgeExpiredLoginAttempts();
+    }
+
     // Verificação de Account Lockout
     const attempt = failedLoginAttempts.get(lockKey);
     if (attempt?.lockedUntil && Date.now() < attempt.lockedUntil) {
@@ -141,10 +157,10 @@ export async function authRoutes(app: FastifyInstance) {
     if (!passwordMatch) {
       const currentCount = (attempt?.count || 0) + 1;
       if (currentCount >= 5) {
-        failedLoginAttempts.set(lockKey, { count: currentCount, lockedUntil: Date.now() + 15 * 60 * 1000 });
+        failedLoginAttempts.set(lockKey, { count: currentCount, lockedUntil: Date.now() + 15 * 60 * 1000, lastAttemptAt: Date.now() });
         throw new AppError('Conta temporariamente bloqueada por segurança após 5 tentativas inválidas. Aguarde 15 minutos.', 429);
       } else {
-        failedLoginAttempts.set(lockKey, { count: currentCount, lockedUntil: null });
+        failedLoginAttempts.set(lockKey, { count: currentCount, lockedUntil: null, lastAttemptAt: Date.now() });
         throw new AppError(`Credenciais inválidas. Tentativa ${currentCount} de 5 antes do bloqueio temporário.`, 401);
       }
     }

@@ -5,9 +5,10 @@ import crypto from 'crypto';
 import { prisma } from '../../shared/prisma.js';
 import { AppError } from '../../shared/errors/AppError.js';
 import { authenticate } from '../../middlewares/auth.js';
+import { dispatchWebhook } from '../../shared/services/webhookDispatcher.js';
 
 export async function transactionRoutes(app: FastifyInstance) {
-  // ── 1. CHECKOUT PÚBLICO / API DE PAGAMENTO (Com Suporte a Idempotency-Key) ──
+  // ── 1. CHECKOUT PÚBLICO / API DE PAGAMENTO (Com Idempotência Atômica & Split Seguro) ──
   app.post('/process', async (request, reply) => {
     const processSchema = z.object({
       merchantApiKey: z.string().min(10),
@@ -36,7 +37,7 @@ export async function transactionRoutes(app: FastifyInstance) {
 
     const body = processSchema.parse(request.body);
 
-    // Verificação de Chave de Idempotência (previne cobrança dupla e race conditions)
+    // Chave de Idempotência (previne cobrança dupla e race conditions)
     const idempotencyKey = (
       request.headers['idempotency-key'] ||
       request.headers['x-idempotency-key']
@@ -50,9 +51,9 @@ export async function transactionRoutes(app: FastifyInstance) {
       throw new AppError('Chave de API do Merchant inválida.', 401);
     }
 
-    // Se chave de idempotência foi fornecida, verifica se a transação já foi processada
     const targetExternalId = body.externalId || idempotencyKey;
 
+    // Checagem prévia de Idempotência
     if (targetExternalId) {
       const existingTx = await prisma.transaction.findFirst({
         where: {
@@ -85,10 +86,28 @@ export async function transactionRoutes(app: FastifyInstance) {
       }
     }
 
-    // Cálculo das taxas
-    const grossAmount = body.amount;
-    const feeAmount = Number(((grossAmount * Number(merchant.feePercent) / 100) + Number(merchant.feeFixed)).toFixed(2));
-    const netAmount = Number((grossAmount - feeAmount).toFixed(2));
+    // ── ARITMÉTICA ESTREITA EM CENTAVOS (Prevenção de Perdas Fracionárias) ──
+    const grossCents = Math.round(body.amount * 100);
+    const feePercentCents = Math.round((grossCents * Number(merchant.feePercent)) / 100);
+    const feeFixedCents = Math.round(Number(merchant.feeFixed) * 100);
+    const totalFeeCents = feePercentCents + feeFixedCents;
+    const netCents = grossCents - totalFeeCents;
+
+    const grossAmount = grossCents / 100;
+    const feeAmount = totalFeeCents / 100;
+    const netAmount = netCents / 100;
+
+    // ── VALIDAÇÃO MATEMÁTICA DE SPLIT (taxa_gateway + soma(sellers) === valor_bruto) ──
+    if (body.splits && body.splits.length > 0) {
+      const totalSplitsCents = body.splits.reduce((acc, s) => acc + Math.round(s.amount * 100), 0);
+
+      if (totalFeeCents + totalSplitsCents !== grossCents) {
+        throw new AppError(
+          `Inconsistência contábil no split de pagamento: a soma dos repasses aos sellers (R$ ${(totalSplitsCents / 100).toFixed(2)}) com a taxa do gateway (R$ ${(totalFeeCents / 100).toFixed(2)}) totaliza R$ ${((totalFeeCents + totalSplitsCents) / 100).toFixed(2)}, divergindo do valor bruto da transação (R$ ${(grossCents / 100).toFixed(2)}).`,
+          422
+        );
+      }
+    }
 
     let pixPayload: string | null = null;
     let pixQrCode: string | null = null;
@@ -108,76 +127,105 @@ export async function transactionRoutes(app: FastifyInstance) {
       const rawNumber = body.creditCard.cardNumber.replace(/\D/g, '');
       cardLastDigits = rawNumber.slice(-4);
       cardBrand = rawNumber.startsWith('4') ? 'VISA' : rawNumber.startsWith('5') ? 'MASTERCARD' : 'ELO';
-      
-      // Simulação de autorização instantânea com adquirente
+
+      // Sanitização imediata: nunca mantém PAN ou CVV em memória
+      body.creditCard.cardNumber = '****';
+      body.creditCard.cvv = '***';
+
       status = 'PAID';
       paidAt = new Date();
     }
 
-    const transaction = await prisma.$transaction(async (tx) => {
-      const created = await tx.transaction.create({
-        data: {
-          merchantId: merchant.id,
-          externalId: targetExternalId,
-          amount: grossAmount,
-          netAmount,
-          feeAmount,
-          paymentMethod: body.paymentMethod,
-          status,
-          customerName: body.customer.name,
-          customerEmail: body.customer.email.toLowerCase(),
-          customerDoc: body.customer.document.replace(/\D/g, ''),
-          pixPayload,
-          pixQrCode,
-          cardLastDigits,
-          cardBrand,
-          installments: body.creditCard?.installments || 1,
-          paidAt
-        }
-      });
+    // ── PERSISTÊNCIA ATÔMICA COM PROTEÇÃO CONTRA RACE CONDITION (P2002) ──
+    let transaction: any = null;
+    try {
+      transaction = await prisma.$transaction(async (tx) => {
+        const created = await tx.transaction.create({
+          data: {
+            merchantId: merchant.id,
+            externalId: targetExternalId,
+            amount: grossAmount,
+            netAmount,
+            feeAmount,
+            paymentMethod: body.paymentMethod,
+            status,
+            customerName: body.customer.name,
+            customerEmail: body.customer.email.toLowerCase(),
+            customerDoc: body.customer.document.replace(/\D/g, ''),
+            pixPayload,
+            pixQrCode,
+            cardLastDigits,
+            cardBrand,
+            installments: body.creditCard?.installments || 1,
+            paidAt
+          }
+        });
 
-      // Cria regras de Split se houver
-      if (body.splits && body.splits.length > 0) {
-        for (const split of body.splits) {
-          await tx.splitRule.create({
-            data: {
-              transactionId: created.id,
-              recipientId: split.recipientId,
-              amount: split.amount
+        if (body.splits && body.splits.length > 0) {
+          for (const split of body.splits) {
+            await tx.splitRule.create({
+              data: {
+                transactionId: created.id,
+                recipientId: split.recipientId,
+                amount: Math.round(split.amount * 100) / 100
+              }
+            });
+          }
+        }
+
+        return created;
+      });
+    } catch (err: any) {
+      // Se houver conflito de unicidade por requisições concorrentes idênticas, resolve de forma idempotente
+      if (err.code === 'P2002' && targetExternalId) {
+        const racedTx = await prisma.transaction.findFirst({
+          where: {
+            merchantId: merchant.id,
+            externalId: targetExternalId
+          }
+        });
+
+        if (racedTx) {
+          reply.header('X-Idempotent-Replay', 'true');
+          if (idempotencyKey) {
+            reply.header('X-Idempotency-Key', idempotencyKey);
+          }
+          return reply.status(200).send({
+            message: 'Transação retornada de forma idempotente (concorrência resolvida com integridade).',
+            idempotent: true,
+            transaction: {
+              id: racedTx.id,
+              amount: racedTx.amount,
+              status: racedTx.status,
+              paymentMethod: racedTx.paymentMethod,
+              pixPayload: racedTx.pixPayload,
+              pixQrCode: racedTx.pixQrCode,
+              cardLastDigits: racedTx.cardLastDigits,
+              cardBrand: racedTx.cardBrand,
+              paidAt: racedTx.paidAt
             }
           });
         }
       }
+      throw err;
+    }
 
-      // Se pago, registra o webhook log
-      if (status === 'PAID' && merchant.webhookUrl) {
-        const payload = {
-          event: 'transaction.paid',
-          data: {
-            id: created.id,
-            amount: created.amount,
-            status: created.status,
-            paidAt: created.paidAt
-          }
-        };
-        const signature = crypto.createHmac('sha256', merchant.webhookSecret).update(JSON.stringify(payload)).digest('hex');
-
-        await tx.webhookLog.create({
-          data: {
-            merchantId: merchant.id,
-            transactionId: created.id,
-            event: 'transaction.paid',
-            payload,
-            signature: `t=${Date.now()},v1=${signature}`,
-            endpointUrl: merchant.webhookUrl,
-            status: 'DELIVERED',
-            responseStatus: 200
-          }
-        });
-      }
-
-      return created;
-    });
+    // Disparo assíncrono de webhook com retentativas e HMAC assinado
+    if (status === 'PAID' && merchant.webhookUrl) {
+      dispatchWebhook({
+        merchantId: merchant.id,
+        transactionId: transaction.id,
+        event: 'transaction.paid',
+        payload: {
+          id: transaction.id,
+          amount: Number(transaction.amount),
+          status: transaction.status,
+          paidAt: transaction.paidAt
+        },
+        endpointUrl: merchant.webhookUrl,
+        secret: merchant.webhookSecret
+      });
+    }
 
     if (idempotencyKey) {
       reply.header('X-Idempotency-Key', idempotencyKey);
@@ -225,35 +273,25 @@ export async function transactionRoutes(app: FastifyInstance) {
           paidAt: new Date()
         }
       });
-
-      if (transaction.merchant.webhookUrl) {
-        const payload = {
-          event: 'transaction.paid',
-          data: {
-            id: t.id,
-            amount: t.amount,
-            status: t.status,
-            paidAt: t.paidAt
-          }
-        };
-        const signature = crypto.createHmac('sha256', transaction.merchant.webhookSecret).update(JSON.stringify(payload)).digest('hex');
-
-        await tx.webhookLog.create({
-          data: {
-            merchantId: transaction.merchant.id,
-            transactionId: t.id,
-            event: 'transaction.paid',
-            payload,
-            signature: `t=${Date.now()},v1=${signature}`,
-            endpointUrl: transaction.merchant.webhookUrl,
-            status: 'DELIVERED',
-            responseStatus: 200
-          }
-        });
-      }
-
       return t;
     });
+
+    // Disparo assíncrono de webhook
+    if (transaction.merchant.webhookUrl) {
+      dispatchWebhook({
+        merchantId: transaction.merchant.id,
+        transactionId: updated.id,
+        event: 'transaction.paid',
+        payload: {
+          id: updated.id,
+          amount: Number(updated.amount),
+          status: updated.status,
+          paidAt: updated.paidAt
+        },
+        endpointUrl: transaction.merchant.webhookUrl,
+        secret: transaction.merchant.webhookSecret
+      });
+    }
 
     return reply.send({ message: 'Pagamento PIX liquidado instantaneamente!', transaction: updated });
   });

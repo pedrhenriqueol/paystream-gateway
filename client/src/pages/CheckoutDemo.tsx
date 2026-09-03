@@ -42,6 +42,7 @@ export const CheckoutDemo: React.FC = () => {
   const [result, setResult] = useState<any>(null);
   const [copiedPix, setCopiedPix] = useState(false);
   const [countdown, setCountdown] = useState(900); // 15 min
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const apiKey = merchant?.apiKeyLive || user?.merchant.apiKeyLive;
 
@@ -59,6 +60,7 @@ export const CheckoutDemo: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setResult(null);
+    setErrorMessage(null);
     setCountdown(900);
 
     try {
@@ -78,7 +80,7 @@ export const CheckoutDemo: React.FC = () => {
       });
       setResult(res.data.transaction);
     } catch (err: any) {
-      alert(`Falha no processamento: ${err.message}`);
+      setErrorMessage(err.message || 'Falha no processamento do pagamento.');
     } finally {
       setLoading(false);
     }

@@ -75,7 +75,7 @@ export const Webhooks: React.FC = () => {
         text: `Chaves rotacionadas com sucesso! Nova Live Key: ${res.data.apiKeyLive.slice(0, 16)}... • Antigas chaves revogadas.`
       });
     } catch (err: any) {
-      alert(`Erro ao rotacionar chaves: ${err.message}`);
+      setMsg({ type: 'error', text: `Erro ao rotacionar chaves: ${err.message}` });
     } finally {
       setRotatingKeys(false);
     }

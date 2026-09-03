@@ -95,7 +95,7 @@ export const Transactions: React.FC = () => {
       downloadAnchor.click();
       downloadAnchor.remove();
     } catch (err: any) {
-      alert(`Falha ao exportar extrato: ${err.message}`);
+      console.error("Falha ao exportar extrato:", err.message);
     }
   };
 

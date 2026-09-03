@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { prisma } from '../../shared/prisma.js';
 import { authenticate } from '../../middlewares/auth.js';
 import { AppError } from '../../shared/errors/AppError.js';
+import { dispatchWebhook, generateWebhookSignature } from '../../shared/services/webhookDispatcher.js';
 
 export async function webhookRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate);
@@ -43,7 +44,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     return reply.send({ message: 'URL de webhook atualizada!', merchant: updated });
   });
 
-  // ── 3. DISPARAR WEBHOOK DE TESTE (SIMULAÇÃO HMAC-SHA256) ──
+  // ── 3. DISPARAR WEBHOOK DE TESTE (SIMULAÇÃO HMAC-SHA256 COM BACKOFF) ──
   const testPingHandler = async (request: any, reply: any) => {
     const { merchantId } = request.user;
 
@@ -99,77 +100,33 @@ export async function webhookRoutes(app: FastifyInstance) {
       }
     };
 
-    const signatureHash = crypto
-      .createHmac('sha256', merchant.webhookSecret)
-      .update(JSON.stringify(payload))
-      .digest('hex');
-
-    const formattedSignature = `t=${timestamp},v1=${signatureHash}`;
     const endpointUrl = merchant.webhookUrl || 'https://webhook.site/paystream-mock-ping';
-    let responseStatus = 200;
-    let deliveryStatus = 'DELIVERED';
+    const { signature } = generateWebhookSignature(payload, merchant.webhookSecret, timestamp);
 
-    if (merchant.webhookUrl) {
-      try {
-        if (typeof fetch !== 'undefined') {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 4000); // 4s timeout
-          const res = await fetch(merchant.webhookUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-PayStream-Signature': formattedSignature,
-              'X-PayStream-Event': 'transaction.paid'
-            },
-            body: JSON.stringify(payload),
-            signal: controller.signal
-          });
-          clearTimeout(timeout);
-          responseStatus = res.status;
-          deliveryStatus = res.ok ? 'DELIVERED' : 'FAILED';
-        }
-      } catch {
-        responseStatus = 504;
-        deliveryStatus = 'FAILED';
-      }
-    } else {
-      responseStatus = 200;
-      deliveryStatus = 'DELIVERED';
-    }
-
-    const log = await prisma.webhookLog.create({
-      data: {
-        merchantId,
-        transactionId,
-        event: 'transaction.paid',
-        payload,
-        signature: formattedSignature,
-        endpointUrl,
-        responseStatus,
-        status: deliveryStatus as any,
-        attempts: 1
-      },
-      include: {
-        transaction: {
-          select: { id: true, amount: true, paymentMethod: true, status: true }
-        }
-      }
+    // Dispara via dispatcher resiliente com retentativas
+    dispatchWebhook({
+      merchantId,
+      transactionId,
+      event: 'transaction.paid',
+      payload,
+      endpointUrl,
+      secret: merchant.webhookSecret,
+      maxAttempts: 3
     });
 
     return reply.status(200).send({
       success: true,
       eventId,
-      deliveryStatus,
+      deliveryStatus: 'QUEUED_FOR_DELIVERY',
       timestamp,
-      signature: formattedSignature,
-      responseStatus,
-      status: deliveryStatus,
+      signature,
+      responseStatus: 202,
+      status: 'DELIVERING',
       deliveredAt: new Date(timestamp).toISOString(),
-      log
+      message: 'Webhook enfileirado para entrega com retentativa exponencial e assinatura HMAC blindada.'
     });
   };
 
-  // Disparo de teste de webhook (resolvido com prefixo em /api/v1/webhooks/test-ping, /api/webhooks/test-ping e /webhooks/test-ping)
   app.post('/test-ping', testPingHandler);
 
   // ── 4. VERIFICAÇÃO DE ASSINATURA & PROTEÇÃO CONTRA REPLAY ATTACKS ──
@@ -212,18 +169,32 @@ export async function webhookRoutes(app: FastifyInstance) {
     const timeDiff = Math.abs(Date.now() - timestamp);
     const isExpired = timeDiff > toleranceMs;
 
-    const expectedHash = crypto
+    const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+    // 1. Hash padrão com timestamp binding (Stripe/Fintech standard)
+    const signedDataBound = `${timestamp}.${payloadString}`;
+    const expectedHashBound = crypto
       .createHmac('sha256', activeSecret)
-      .update(typeof payload === 'string' ? payload : JSON.stringify(payload))
+      .update(signedDataBound)
       .digest('hex');
 
-    // Comparação segura contra Timing Attacks
+    // 2. Hash legado (apenas payload) para compatibilidade
+    const expectedHashLegacy = crypto
+      .createHmac('sha256', activeSecret)
+      .update(payloadString)
+      .digest('hex');
+
+    // Comparação em tempo constante contra Timing Attacks com validação de buffer lengths
     let isValidHash = false;
     try {
-      isValidHash = crypto.timingSafeEqual(
-        Buffer.from(receivedHash, 'hex'),
-        Buffer.from(expectedHash, 'hex')
-      );
+      const bufReceived = Buffer.from(receivedHash, 'hex');
+      const bufExpectedBound = Buffer.from(expectedHashBound, 'hex');
+      const bufExpectedLegacy = Buffer.from(expectedHashLegacy, 'hex');
+
+      if (bufReceived.length === bufExpectedBound.length) {
+        isValidHash = crypto.timingSafeEqual(bufReceived, bufExpectedBound) ||
+                      crypto.timingSafeEqual(bufReceived, bufExpectedLegacy);
+      }
     } catch {
       isValidHash = false;
     }

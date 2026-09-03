@@ -54,12 +54,21 @@ async function bootstrap() {
   await registerRoutes('/api');
   await registerRoutes('');
 
-  // ── TRATAMENTO CENTRALIZADO DE ERROS ──
+  // ── TRATAMENTO CENTRALIZADO DE ERROS (COM REDAÇÃO DE DADOS SENSÍVEIS) ──
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ZodError) {
+      // Mascara dados de cartão se presentes nos erros de validação
+      const formatted = error.format() as any;
+      if (formatted?.creditCard?.cardNumber) {
+        formatted.creditCard.cardNumber = { _errors: ['Número de cartão inválido (mascarado para segurança PCI-DSS).'] };
+      }
+      if (formatted?.creditCard?.cvv) {
+        formatted.creditCard.cvv = { _errors: ['Código CVV inválido (mascarado).'] };
+      }
+
       return reply.status(400).send({
         message: 'Erro de validação nos dados enviados.',
-        errors: error.format()
+        errors: formatted
       });
     }
 
@@ -69,7 +78,14 @@ async function bootstrap() {
       });
     }
 
-    request.log.error(error);
+    // Redação de segurança PCI-DSS para logs: impede gravação de PAN e CVV
+    const safeError = {
+      message: error.message,
+      name: error.name,
+      statusCode: (error as any).statusCode || 500,
+      stack: env.NODE_ENV === 'development' ? error.stack : undefined
+    };
+    request.log.error(safeError);
 
     return reply.status(500).send({
       message: 'Erro interno no gateway de pagamento.'
